@@ -14,9 +14,13 @@ e AGENT_MODEL, oppure tramite i flag --provider / --model.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import re
+import subprocess  # noqa: S404 – used only to spawn `docker` with a validated image name
 import sys
+import threading
 import time
 from typing import Any
 
@@ -26,6 +30,116 @@ from openai import OpenAI
 import ssh_manager as ssh
 
 load_dotenv()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MCP Docker client (optional mode)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# docker image names: [registry/]name[:tag] or name@digest
+_DOCKER_IMAGE_RE = re.compile(r'^[a-zA-Z0-9]([a-zA-Z0-9._\-/:@]*[a-zA-Z0-9])?$')
+
+
+def _validate_docker_image(image: str) -> str:
+    """Raise ValueError if *image* is not a well-formed Docker image reference."""
+    if not _DOCKER_IMAGE_RE.match(image):
+        raise ValueError(
+            f"Nome immagine Docker non valido: {image!r}. "
+            "Deve contenere solo lettere, cifre, '.', '-', '_', '/', ':', '@'."
+        )
+    return image
+
+
+class McpDockerClient:
+    """Synchronous MCP client that speaks JSON-RPC 2.0 over Docker stdio."""
+
+    def __init__(self, image: str, env_file: str = ".env", ssh_key_dir: str = "~/.ssh"):
+        image = _validate_docker_image(image)
+        env_file_abs = os.path.abspath(env_file)
+        ssh_dir = os.path.expanduser(ssh_key_dir)
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "--env-file", env_file_abs,
+            "-v", f"{ssh_dir}:/root/.ssh:ro",
+            image,
+        ]
+        self._proc = subprocess.Popen(  # noqa: S603
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            bufsize=1,
+        )
+        self._req_id = 0
+        self._lock = threading.Lock()
+        self._initialize()
+
+    def _next_id(self) -> int:
+        self._req_id += 1
+        return self._req_id
+
+    def _send_recv(self, method: str, params: dict) -> dict:
+        req_id = self._next_id()
+        request = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+        with self._lock:
+            self._proc.stdin.write(json.dumps(request) + "\n")
+            self._proc.stdin.flush()
+            while True:
+                line = self._proc.stdout.readline()
+                if not line:
+                    raise RuntimeError("MCP server Docker chiuso inaspettatamente")
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if "id" not in msg:
+                    continue  # skip notifications
+                if msg["id"] == req_id:
+                    return msg
+
+    def _initialize(self) -> None:
+        resp = self._send_recv("initialize", {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "linux-mcp-agent", "version": "1.0.0"},
+        })
+        if "error" in resp:
+            raise RuntimeError(f"MCP initialize fallito: {resp['error']}")
+        notif = {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}}
+        with self._lock:
+            self._proc.stdin.write(json.dumps(notif) + "\n")
+            self._proc.stdin.flush()
+
+    def call_tool(self, name: str, arguments: dict) -> str:
+        resp = self._send_recv("tools/call", {"name": name, "arguments": arguments})
+        if "error" in resp:
+            err = resp["error"]
+            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            return json.dumps({"error": msg})
+        result = resp.get("result", {})
+        content = result.get("content", [])
+        if isinstance(content, list) and content:
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    return block.get("text", "")
+        return json.dumps(result)
+
+    def close(self) -> None:
+        try:
+            if self._proc.stdin:
+                self._proc.stdin.close()
+            self._proc.wait(timeout=5)
+        except Exception:
+            self._proc.kill()
+
+
+# Set by main() when --mcp-docker is used
+_MCP_CLIENT: McpDockerClient | None = None
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Provider registry
@@ -500,6 +614,8 @@ Rispondi in italiano, in modo conciso. Formatta tabelle e liste in modo leggibil
 
 def _run_tool(name: str, args: dict) -> str:  # noqa: PLR0911,PLR0912
     """Execute a tool and return the result as a JSON string."""
+    if _MCP_CLIENT is not None:
+        return _MCP_CLIENT.call_tool(name, args)
     a = args
     try:
         # ── Core ──────────────────────────────────────────────────────────────
@@ -778,10 +894,37 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Nome del modello (override di AGENT_MODEL e del default del provider)",
     )
+    _mcp_image_default = os.getenv("MCP_DOCKER_IMAGE", "lordraw/linux-mcp:latest")
+    _mcp_ssh_default = os.getenv("MCP_SSH_KEY_DIR", "~/.ssh")
+    parser.add_argument(
+        "--mcp-docker",
+        metavar="IMAGE",
+        nargs="?",
+        const=_mcp_image_default,
+        default=None,
+        help=(
+            "Usa il server MCP in Docker invece di ssh_manager diretto. "
+            f"IMAGE facoltativo (default da MCP_DOCKER_IMAGE o '{_mcp_image_default}')."
+        ),
+    )
+    parser.add_argument(
+        "--mcp-env-file",
+        default=".env",
+        metavar="PATH",
+        help="File .env da montare nel container MCP (default: .env)",
+    )
+    parser.add_argument(
+        "--mcp-ssh-dir",
+        default=_mcp_ssh_default,
+        metavar="DIR",
+        help=f"Directory chiavi SSH da montare nel container MCP (default da MCP_SSH_KEY_DIR o '{_mcp_ssh_default}')",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
+    global _MCP_CLIENT
+
     args = parse_args()
     provider = args.provider
 
@@ -793,36 +936,57 @@ def main() -> None:
     elif os.getenv("AGENT_MODEL"):
         model = os.getenv("AGENT_MODEL")
 
-    print(f"Linux SSH AI Agent  |  provider={provider}  model={model}")
+    # ── MCP Docker mode ────────────────────────────────────────────────────────
+    # Attivato da --mcp-docker oppure automaticamente se MCP_DOCKER_IMAGE è nel .env
+    mcp_image = args.mcp_docker or os.getenv("MCP_DOCKER_IMAGE")
+    if mcp_image:
+        print(f"[mcp] Connessione al server MCP Docker  image={mcp_image}")
+        try:
+            _MCP_CLIENT = McpDockerClient(
+                image=mcp_image,
+                env_file=args.mcp_env_file,
+                ssh_key_dir=args.mcp_ssh_dir,
+            )
+            print("[mcp] Connesso.")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[errore] Impossibile avviare il container MCP: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+    print(f"Linux SSH AI Agent  |  provider={provider}  model={model}"
+          + (f"  mcp-docker={mcp_image}" if mcp_image else ""))
     print("Type your request, or 'exit' / Ctrl-C to quit.")
     print()
 
     history: list[dict] = []
 
-    while True:
-        try:
-            user_input = input("You: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nArrivederci.")
-            break
+    try:
+        while True:
+            try:
+                user_input = input("You: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nArrivederci.")
+                break
 
-        if not user_input:
-            continue
-        if user_input.lower() in {"exit", "quit", "q"}:
-            print("Arrivederci.")
-            break
+            if not user_input:
+                continue
+            if user_input.lower() in {"exit", "quit", "q"}:
+                print("Arrivederci.")
+                break
 
-        print()
-        try:
-            answer = run_agent(client, model, user_input, history)
-        except Exception as exc:  # noqa: BLE001
-            print(f"  [errore] {type(exc).__name__}: {exc}")
             print()
-            continue
+            try:
+                answer = run_agent(client, model, user_input, history)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [errore] {type(exc).__name__}: {exc}")
+                print()
+                continue
 
-        print()
-        print(answer)
-        print()
+            print()
+            print(answer)
+            print()
+    finally:
+        if _MCP_CLIENT is not None:
+            _MCP_CLIENT.close()
 
 
 if __name__ == "__main__":
