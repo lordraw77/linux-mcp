@@ -14,7 +14,13 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 4. [Configuration](#configuration)
    - [SSH Servers](#ssh-servers)
 5. [Running the MCP Server](#running-the-mcp-server)
-6. [Tool Reference](#tool-reference)
+6. [Docker](#docker)
+   - [Quick Start](#quick-start)
+   - [Docker Compose](#docker-compose)
+   - [Build and Publish](#build-and-publish)
+   - [Claude Desktop with Docker](#claude-desktop-with-docker)
+   - [Example Prompts](#example-prompts)
+7. [Tool Reference](#tool-reference)
    - [Core](#core)
    - [File Operations](#file-operations)
    - [File Search](#file-search)
@@ -34,8 +40,8 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
    - [Git](#git)
    - [Web Servers](#web-servers)
    - [Multi-Server](#multi-server)
-7. [Authentication](#authentication)
-8. [Security Considerations](#security-considerations)
+8. [Authentication](#authentication)
+9. [Security Considerations](#security-considerations)
 
 ---
 
@@ -90,8 +96,10 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 
 ## Installation
 
+### From source
+
 ```bash
-git clone <repo-url> /opt/linux-mcp
+git clone https://github.com/lordraw77/linux-mcp /opt/linux-mcp
 cd /opt/linux-mcp
 
 # Install dependencies (use Python 3.12 if 3.9 is the system default)
@@ -101,6 +109,16 @@ python3.12 -m pip install -r requirements.txt
 cp .env.example .env
 $EDITOR .env
 ```
+
+### From Docker Hub
+
+```bash
+docker pull lordraw/linux-mcp:latest
+cp .env.example .env && $EDITOR .env
+docker run --rm -i --env-file .env lordraw/linux-mcp
+```
+
+See [Docker](#docker) for full details.
 
 ---
 
@@ -200,6 +218,262 @@ Add to `.claude/settings.json` in your project root:
 # Verify the server starts and lists tools
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python3.12 server.py
 ```
+
+---
+
+## Docker
+
+The published image is **[`lordraw/linux-mcp`](https://hub.docker.com/r/lordraw/linux-mcp)**.  
+It ships Python 3.12, all pip dependencies, plus `openssh-client`, `openssl`,
+`iputils-ping`, `traceroute`, and `git` so every tool works out of the box.
+
+> **Security note:** the image contains no secrets. SSH credentials are passed
+> at runtime via `--env-file .env` and never baked into the image.
+
+For the full Docker Hub description see [DOCKER_OVERVIEW.md](DOCKER_OVERVIEW.md).
+
+---
+
+### Quick Start
+
+```bash
+# Pull the latest release
+docker pull lordraw/linux-mcp:latest
+
+# Run (reads credentials from your local .env; mount SSH keys if using key auth)
+docker run --rm -i \
+  --env-file .env \
+  -v $HOME/.ssh:/root/.ssh:ro \
+  lordraw/linux-mcp
+```
+
+The container communicates over **stdio** — keep `-i` (interactive) so the MCP
+client can pipe JSON-RPC messages to it.
+
+---
+
+### Docker Compose
+
+A ready-to-use [docker-compose.yml](docker-compose.yml) is included:
+
+```bash
+docker compose run --rm linux-mcp
+```
+
+Set `SSH_KEY_DIR` if your keys live outside `~/.ssh`:
+
+```bash
+SSH_KEY_DIR=/home/deploy/.ssh docker compose run --rm linux-mcp
+```
+
+Wire it up from an MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "command": "docker",
+      "args": ["compose", "-f", "/opt/linux-mcp/docker-compose.yml",
+               "run", "--rm", "linux-mcp"]
+    }
+  }
+}
+```
+
+---
+
+### Build and Publish
+
+The [Makefile](Makefile) wraps the full Docker workflow:
+
+```bash
+# Build the image locally
+make build
+
+# Build + tag with the current git version
+make tag
+
+# Push :latest and :<version> to Docker Hub (requires docker login)
+make push
+
+# Full pipeline: build → tag → push
+make release
+
+# Run locally for quick tests
+make run
+
+# Remove local images
+make clean
+```
+
+The version tag is derived from `git describe --tags --always --dirty`
+(e.g. `v1.2.0`, `v1.2.0-3-gabcdef`, `dev` when no tags exist).
+
+**First-time login:**
+
+```bash
+docker login -u lordraw
+```
+
+---
+
+### Claude Desktop with Docker
+
+Replace the `python3.12` launcher with the Docker image in your MCP client
+config. The container receives the same `.env` file via `--env-file`.
+
+**`~/Library/Application Support/Claude/claude_desktop_config.json`** (macOS):
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--env-file", "/opt/linux-mcp/.env",
+        "lordraw/linux-mcp"
+      ]
+    }
+  }
+}
+```
+
+**`.claude/settings.json`** (Claude Code CLI):
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--env-file", "/opt/linux-mcp/.env",
+        "lordraw/linux-mcp"
+      ]
+    }
+  }
+}
+```
+
+---
+
+### Example Prompts
+
+Once the MCP server is connected to your AI client, you can issue natural-language
+requests. Below are representative examples grouped by category.
+
+#### Server discovery
+
+> "Which servers are configured?"
+
+> "Show me the label, host, and user for all servers."
+
+#### Command execution
+
+> "Run `uptime` on the web-server and show me the result."
+
+> "Execute `df -h` on all servers at once and compare free disk space."
+
+> "Run `systemctl status nginx` on web-server with sudo."
+
+#### File operations
+
+> "Show me the last 50 lines of `/var/log/nginx/error.log` on web-server."
+
+> "Create the directory `/opt/myapp/releases` on db-server."
+
+> "Write the text `Hello World` to `/tmp/test.txt` on web-server."
+
+> "Download `/etc/nginx/nginx.conf` from web-server."
+
+#### Monitoring
+
+> "Collect 5 CPU/memory samples 3 seconds apart on web-server."
+
+> "Show me the top 10 processes sorted by memory on db-server."
+
+#### Process & service management
+
+> "List all running processes matching `python` on web-server."
+
+> "Restart the `nginx` service on web-server (with sudo)."
+
+> "Show which systemd services are currently failing on db-server."
+
+#### Docker
+
+> "Which Docker containers are running on web-server?"
+
+> "Show the last 100 lines of logs for the `api` container on web-server."
+
+> "Restart the `worker` container on db-server."
+
+#### Package management
+
+> "List all installed packages containing `python` on web-server."
+
+> "Install `htop` on web-server using sudo."
+
+#### Firewall
+
+> "Show the current firewall rules on web-server."
+
+> "Open port 8080/tcp on web-server."
+
+#### Network
+
+> "Ping `8.8.8.8` from web-server (4 packets)."
+
+> "Run a traceroute from web-server to `github.com`."
+
+> "Check if port 5432 is open on db-server."
+
+#### User & group management
+
+> "List all non-system users on web-server."
+
+> "Create user `deploy` with shell `/bin/bash` on web-server (sudo)."
+
+> "Show all groups on db-server."
+
+#### Disk & storage
+
+> "Show disk usage for `/var` on db-server."
+
+> "List all currently mounted filesystems on web-server."
+
+#### Cron
+
+> "List all crontabs on web-server."
+
+> "Add a cron job `0 2 * * * /opt/backup.sh` for root on web-server."
+
+#### SSL / TLS
+
+> "Check the TLS certificate for `example.com:443` via web-server."
+
+#### Git
+
+> "Show the git status of `/opt/myapp` on web-server."
+
+> "Pull the latest changes for `/opt/myapp` on web-server (branch `main`)."
+
+> "Show the last 5 git commits for `/opt/myapp` on web-server."
+
+#### Web servers
+
+> "Reload nginx on web-server."
+
+> "Test the Apache configuration on db-server."
+
+> "What is the current nginx status on web-server?"
+
+#### Multi-server
+
+> "Run `free -m` on web-server and db-server simultaneously."
+
+> "Deploy the latest release by running `/opt/deploy.sh` on all servers at once."
 
 ---
 

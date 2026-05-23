@@ -1,0 +1,12 @@
+.env
+*.env
+.git/
+.gitignore
+.claude/
+__pycache__/
+*.pyc
+agent.py
+Makefile
+README.md
+DOCKER_OVERVIEW.md
+.env.example

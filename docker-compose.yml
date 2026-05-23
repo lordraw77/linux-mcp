@@ -1,0 +1,12 @@
+services:
+  linux-mcp:
+    image: lordraw/linux-mcp:latest
+    # stdin_open is required: MCP communicates over stdio (JSON-RPC 2.0)
+    stdin_open: true
+    tty: false
+    env_file: .env
+    volumes:
+      # Mount SSH keys so SERVER_N_KEY_PATH paths resolve inside the container.
+      # Override SSH_KEY_DIR if your keys live elsewhere.
+      - ${SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+    restart: "no"   # MCP servers are spawned on-demand by the client, not kept running
