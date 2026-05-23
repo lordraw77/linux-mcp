@@ -303,4 +303,4 @@ Deploy /opt/deploy.sh across all servers in parallel.
 
 ## Source
 
-GitHub: [lordraw/linux-mcp](https://github.com/lordraw/linux-mcp)
+GitHub: [lordraw77/linux-mcp](https://github.com/lordraw77/linux-mcp)

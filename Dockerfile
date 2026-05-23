@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="linux-ssh-mcp" \
       org.opencontainers.image.description="MCP server with 48 SSH tools for managing remote Linux servers" \
-      org.opencontainers.image.source="https://github.com/lordraw/linux-mcp" \
+      org.opencontainers.image.source="https://github.com/lordraw77/linux-mcp" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
