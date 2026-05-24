@@ -61,24 +61,24 @@ class CommandResult:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def load_servers() -> dict[str, ServerConfig]:
-    """Reads SERVER_N_* variables from .env and builds the server registry.
-    Stops at the first N for which SERVER_N_HOST is not defined."""
+    """Reads UXMCP_SERVER_N_* variables from .env and builds the server registry.
+    Stops at the first N for which UXMCP_SERVER_N_HOST is not defined."""
     servers: dict[str, ServerConfig] = {}
     i = 1
     while True:
-        host = os.getenv(f"SERVER_{i}_HOST")
+        host = os.getenv(f"UXMCP_SERVER_{i}_HOST")
         if not host:
             break
         srv_id = str(i)
         servers[srv_id] = ServerConfig(
             id=srv_id,
-            label=os.getenv(f"SERVER_{i}_LABEL", f"server-{i}"),
+            label=os.getenv(f"UXMCP_SERVER_{i}_LABEL", f"server-{i}"),
             host=host,
-            port=int(os.getenv(f"SERVER_{i}_PORT", "22")),
-            user=os.getenv(f"SERVER_{i}_USER", "root"),
-            password=os.getenv(f"SERVER_{i}_PASSWORD") or None,
-            key_path=os.getenv(f"SERVER_{i}_KEY_PATH") or None,
-            sudo_password=os.getenv(f"SERVER_{i}_SUDO_PASSWORD") or None,
+            port=int(os.getenv(f"UXMCP_SERVER_{i}_PORT", "22")),
+            user=os.getenv(f"UXMCP_SERVER_{i}_USER", "root"),
+            password=os.getenv(f"UXMCP_SERVER_{i}_PASSWORD") or None,
+            key_path=os.getenv(f"UXMCP_SERVER_{i}_KEY_PATH") or None,
+            sudo_password=os.getenv(f"UXMCP_SERVER_{i}_SUDO_PASSWORD") or None,
         )
         i += 1
     return servers

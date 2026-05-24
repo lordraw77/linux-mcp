@@ -129,47 +129,47 @@ All configuration is stored in `.env`. Never commit this file — it is listed i
 
 ### SSH Servers
 
-Servers are configured with a numbered prefix `SERVER_N_*`. The loader scans
-`N = 1, 2, 3, …` and stops at the first `N` where `SERVER_N_HOST` is missing,
+Servers are configured with a numbered prefix `UXMCP_SERVER_N_*`. The loader scans
+`N = 1, 2, 3, …` and stops at the first `N` where `UXMCP_SERVER_N_HOST` is missing,
 so you can add as many servers as needed.
 
 ```ini
 # ── Server 1: root access via SSH key ─────────────────────────────────────────
-SERVER_1_LABEL=web-server
-SERVER_1_HOST=192.168.1.10
-SERVER_1_PORT=22
-SERVER_1_USER=root
-SERVER_1_KEY_PATH=/root/.ssh/id_ed25519
-# SERVER_1_PASSWORD=               # alternative to KEY_PATH
+UXMCP_SERVER_1_LABEL=web-server
+UXMCP_SERVER_1_HOST=192.168.1.10
+UXMCP_SERVER_1_PORT=22
+UXMCP_SERVER_1_USER=root
+UXMCP_SERVER_1_KEY_PATH=/root/.ssh/id_ed25519
+# UXMCP_SERVER_1_PASSWORD=               # alternative to KEY_PATH
 
 # ── Server 2: unprivileged user + sudo ────────────────────────────────────────
-SERVER_2_LABEL=db-server
-SERVER_2_HOST=192.168.1.20
-SERVER_2_PORT=22
-SERVER_2_USER=deploy
-SERVER_2_KEY_PATH=/home/user/.ssh/deploy_rsa
-SERVER_2_SUDO_PASSWORD=s3cr3t       # used when use_sudo=true
+UXMCP_SERVER_2_LABEL=db-server
+UXMCP_SERVER_2_HOST=192.168.1.20
+UXMCP_SERVER_2_PORT=22
+UXMCP_SERVER_2_USER=deploy
+UXMCP_SERVER_2_KEY_PATH=/home/user/.ssh/deploy_rsa
+UXMCP_SERVER_2_SUDO_PASSWORD=s3cr3t       # used when use_sudo=true
 
 # ── Server 3: password auth ───────────────────────────────────────────────────
-SERVER_3_LABEL=backup
-SERVER_3_HOST=10.0.0.5
-SERVER_3_PORT=2222
-SERVER_3_USER=admin
-SERVER_3_PASSWORD=mypassword
-SERVER_3_SUDO_PASSWORD=mypassword
+UXMCP_SERVER_3_LABEL=backup
+UXMCP_SERVER_3_HOST=10.0.0.5
+UXMCP_SERVER_3_PORT=2222
+UXMCP_SERVER_3_USER=admin
+UXMCP_SERVER_3_PASSWORD=mypassword
+UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
 ```
 
 **Variable reference:**
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SERVER_N_HOST` | ✅ | — | Hostname or IP of the SSH server |
-| `SERVER_N_PORT` | — | `22` | SSH port |
-| `SERVER_N_USER` | — | `root` | SSH login username |
-| `SERVER_N_LABEL` | — | `server-N` | Human-readable name (shown in listings) |
-| `SERVER_N_PASSWORD` | ✅* | — | SSH password (*required if no KEY_PATH) |
-| `SERVER_N_KEY_PATH` | ✅* | — | Absolute path to SSH private key |
-| `SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password used for `sudo -S` |
+| `UXMCP_SERVER_N_HOST` | ✅ | — | Hostname or IP of the SSH server |
+| `UXMCP_SERVER_N_PORT` | — | `22` | SSH port |
+| `UXMCP_SERVER_N_USER` | — | `root` | SSH login username |
+| `UXMCP_SERVER_N_LABEL` | — | `server-N` | Human-readable name (shown in listings) |
+| `UXMCP_UXMCP_SERVER_N_PASSWORD` | ✅* | — | SSH password (*required if no KEY_PATH) |
+| `UXMCP_UXMCP_SERVER_N_KEY_PATH` | ✅* | — | Absolute path to SSH private key |
+| `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password used for `sudo -S` |
 
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.
 > If the user is `root`, `use_sudo` is silently ignored.
@@ -260,10 +260,10 @@ A ready-to-use [docker-compose.yml](docker-compose.yml) is included:
 docker compose run --rm linux-mcp
 ```
 
-Set `SSH_KEY_DIR` if your keys live outside `~/.ssh`:
+Set `UXMCP_SSH_KEY_DIR` if your keys live outside `~/.ssh`:
 
 ```bash
-SSH_KEY_DIR=/home/deploy/.ssh docker compose run --rm linux-mcp
+UXMCP_SSH_KEY_DIR=/home/deploy/.ssh docker compose run --rm linux-mcp
 ```
 
 Wire it up from an MCP client config:
@@ -529,7 +529,7 @@ Executes an arbitrary shell command on the remote server.
 
 **Notes:**
 - When `use_sudo=true` and the user is not root, a PTY channel is opened and
-  `SERVER_N_SUDO_PASSWORD` (or `SERVER_N_PASSWORD`) is written to stdin.
+  `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` (or `UXMCP_UXMCP_SERVER_N_PASSWORD`) is written to stdin.
 
 ---
 
@@ -1397,10 +1397,10 @@ bulk operations (e.g. pulling updated configs).
 
 Three authentication methods are supported, in priority order:
 
-1. **SSH private key** (`SERVER_N_KEY_PATH`): the key file must be readable by
+1. **SSH private key** (`UXMCP_UXMCP_SERVER_N_KEY_PATH`): the key file must be readable by
    the process running `server.py`. Passphrase-protected keys are supported if
    the key is loaded in `ssh-agent`.
-2. **Password** (`SERVER_N_PASSWORD`): sent securely over the encrypted SSH
+2. **Password** (`UXMCP_UXMCP_SERVER_N_PASSWORD`): sent securely over the encrypted SSH
    channel.
 3. **SSH agent** (automatic): if neither `KEY_PATH` nor `PASSWORD` is set,
    `paramiko` tries to contact a running `ssh-agent`.
@@ -1411,7 +1411,7 @@ When `use_sudo=true` is passed to a tool and the configured user is **not** `roo
 
 1. A PTY channel is opened (required for sudo's password prompt).
 2. The command is wrapped as `sudo -S sh -c '<command>'`.
-3. `SERVER_N_SUDO_PASSWORD` (falling back to `SERVER_N_PASSWORD`) is written to
+3. `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` (falling back to `UXMCP_UXMCP_SERVER_N_PASSWORD`) is written to
    the channel's stdin followed by a newline.
 
 If neither password is set, sudo will block waiting for input and the command

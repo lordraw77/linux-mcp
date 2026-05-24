@@ -148,46 +148,46 @@ _MCP_CLIENT: McpDockerClient | None = None
 PROVIDER_REGISTRY: dict[str, dict] = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
-        "api_key_env": "OPENROUTER_API_KEY",
-        "model_env": "OPENROUTER_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_OPENROUTER_API_KEY",
+        "model_env": "UXMCP_OPENROUTER_DEFAULT_MODEL",
         "default_model": "openrouter/auto",
     },
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
-        "api_key_env": "GROQ_API_KEY",
-        "model_env": "GROQ_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_GROQ_API_KEY",
+        "model_env": "UXMCP_GROQ_DEFAULT_MODEL",
         "default_model": "llama-3.3-70b-versatile",
     },
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "api_key_env": "GEMINI_API_KEY",
-        "model_env": "GEMINI_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_GEMINI_API_KEY",
+        "model_env": "UXMCP_GEMINI_DEFAULT_MODEL",
         "default_model": "gemini-2.0-flash",
     },
     "cloudflare": {
-        # base_url costruita dinamicamente: richiede CLOUDFLARE_ACCOUNT_ID
+        # base_url costruita dinamicamente: richiede UXMCP_CLOUDFLARE_ACCOUNT_ID
         "base_url": None,
-        "api_key_env": "CLOUDFLARE_API_KEY",
-        "model_env": "CLOUDFLARE_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_CLOUDFLARE_API_KEY",
+        "model_env": "UXMCP_CLOUDFLARE_DEFAULT_MODEL",
         "default_model": "@cf/meta/llama-3.1-8b-instruct",
     },
     "cerebras": {
         "base_url": "https://api.cerebras.ai/v1",
-        "api_key_env": "CEREBRAS_API_KEY",
-        "model_env": "CEREBRAS_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_CEREBRAS_API_KEY",
+        "model_env": "UXMCP_CEREBRAS_DEFAULT_MODEL",
         "default_model": "llama-3.3-70b",
     },
     "mistral": {
         "base_url": "https://api.mistral.ai/v1",
-        "api_key_env": "MISTRAL_API_KEY",
-        "model_env": "MISTRAL_DEFAULT_MODEL",
+        "api_key_env": "UXMCP_MISTRAL_API_KEY",
+        "model_env": "UXMCP_MISTRAL_DEFAULT_MODEL",
         "default_model": "mistral-small-latest",
     },
     "ollama": {
-        # base_url da OLLAMA_BASE_URL oppure default locale
+        # base_url da UXMCP_OLLAMA_BASE_URL oppure default locale
         "base_url": None,
         "api_key_env": None,
-        "model_env": "OLLAMA_DEFAULT_MODEL",
+        "model_env": "UXMCP_OLLAMA_DEFAULT_MODEL",
         "default_model": "llama3.2",
     },
 }
@@ -216,10 +216,10 @@ def build_client(provider: str) -> tuple[OpenAI, str]:
 
     # ── base URL ───────────────────────────────────────────────────────────────
     if provider == "cloudflare":
-        account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+        account_id = os.getenv("UXMCP_CLOUDFLARE_ACCOUNT_ID")
         if not account_id:
             print(
-                "[errore] CLOUDFLARE_ACCOUNT_ID non impostato nel .env",
+                "[errore] UXMCP_CLOUDFLARE_ACCOUNT_ID non impostato nel .env",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -227,7 +227,7 @@ def build_client(provider: str) -> tuple[OpenAI, str]:
             f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
         )
     elif provider == "ollama":
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        base_url = os.getenv("UXMCP_OLLAMA_BASE_URL", "http://localhost:11434/v1")
     else:
         base_url = cfg["base_url"]
 
@@ -885,17 +885,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        default=os.getenv("AGENT_PROVIDER", "openrouter"),
+        default=os.getenv("UXMCP_AGENT_PROVIDER", "openrouter"),
         choices=list(PROVIDER_REGISTRY),
-        help="Provider LLM (default: AGENT_PROVIDER env oppure openrouter)",
+        help="Provider LLM (default: UXMCP_AGENT_PROVIDER env oppure openrouter)",
     )
     parser.add_argument(
         "--model",
         default=None,
         help="Nome del modello (override di AGENT_MODEL e del default del provider)",
     )
-    _mcp_image_default = os.getenv("MCP_DOCKER_IMAGE", "lordraw/linux-mcp:latest")
-    _mcp_ssh_default = os.getenv("MCP_SSH_KEY_DIR", "~/.ssh")
+    _mcp_image_default = os.getenv("UXMCP_MCP_DOCKER_IMAGE", "lordraw/linux-mcp:latest")
+    _mcp_ssh_default = os.getenv("UXMCP_MCP_SSH_KEY_DIR", "~/.ssh")
     parser.add_argument(
         "--mcp-docker",
         metavar="IMAGE",
@@ -904,7 +904,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Usa il server MCP in Docker invece di ssh_manager diretto. "
-            f"IMAGE facoltativo (default da MCP_DOCKER_IMAGE o '{_mcp_image_default}')."
+            f"IMAGE facoltativo (default da UXMCP_MCP_DOCKER_IMAGE o '{_mcp_image_default}')."
         ),
     )
     parser.add_argument(
@@ -917,7 +917,7 @@ def parse_args() -> argparse.Namespace:
         "--mcp-ssh-dir",
         default=_mcp_ssh_default,
         metavar="DIR",
-        help=f"Directory chiavi SSH da montare nel container MCP (default da MCP_SSH_KEY_DIR o '{_mcp_ssh_default}')",
+        help=f"Directory chiavi SSH da montare nel container MCP (default da UXMCP_MCP_SSH_KEY_DIR o '{_mcp_ssh_default}')",
     )
     return parser.parse_args()
 
@@ -933,12 +933,12 @@ def main() -> None:
     # --model dalla CLI ha la precedenza su tutto
     if args.model:
         model = args.model
-    elif os.getenv("AGENT_MODEL"):
-        model = os.getenv("AGENT_MODEL")
+    elif os.getenv("UXMCP_AGENT_MODEL"):
+        model = os.getenv("UXMCP_AGENT_MODEL")
 
     # ── MCP Docker mode ────────────────────────────────────────────────────────
     # Attivato da --mcp-docker oppure automaticamente se MCP_DOCKER_IMAGE è nel .env
-    mcp_image = args.mcp_docker or os.getenv("MCP_DOCKER_IMAGE")
+    mcp_image = args.mcp_docker or os.getenv("UXMCP_MCP_DOCKER_IMAGE")
     if mcp_image:
         print(f"[mcp] Connessione al server MCP Docker  image={mcp_image}")
         try:

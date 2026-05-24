@@ -40,44 +40,44 @@ The container speaks **stdio** — always keep `-i` so your MCP client can pipe 
 
 ## Configuration
 
-All configuration lives in a single `.env` file. Add one numbered block per server; the loader stops at the first missing `SERVER_N_HOST`.
+All configuration lives in a single `.env` file. Add one numbered block per server; the loader stops at the first missing `UXMCP_SERVER_N_HOST`.
 
 ```ini
 # ── Server 1: root via SSH key ─────────────────────────────────────────────
-SERVER_1_LABEL=web-server
-SERVER_1_HOST=192.168.1.10
-SERVER_1_PORT=22
-SERVER_1_USER=root
-SERVER_1_KEY_PATH=/root/.ssh/id_ed25519
+UXMCP_SERVER_1_LABEL=web-server
+UXMCP_SERVER_1_HOST=192.168.1.10
+UXMCP_SERVER_1_PORT=22
+UXMCP_SERVER_1_USER=root
+UXMCP_SERVER_1_KEY_PATH=/root/.ssh/id_ed25519
 
 # ── Server 2: unprivileged user + sudo ────────────────────────────────────
-SERVER_2_LABEL=db-server
-SERVER_2_HOST=192.168.1.20
-SERVER_2_PORT=22
-SERVER_2_USER=deploy
-SERVER_2_KEY_PATH=/home/user/.ssh/deploy_rsa
-SERVER_2_SUDO_PASSWORD=s3cr3t
+UXMCP_SERVER_2_LABEL=db-server
+UXMCP_SERVER_2_HOST=192.168.1.20
+UXMCP_SERVER_2_PORT=22
+UXMCP_SERVER_2_USER=deploy
+UXMCP_SERVER_2_KEY_PATH=/home/user/.ssh/deploy_rsa
+UXMCP_SERVER_2_SUDO_PASSWORD=s3cr3t
 
 # ── Server 3: password auth ───────────────────────────────────────────────
-SERVER_3_LABEL=backup
-SERVER_3_HOST=10.0.0.5
-SERVER_3_PORT=2222
-SERVER_3_USER=admin
-SERVER_3_PASSWORD=mypassword
-SERVER_3_SUDO_PASSWORD=mypassword
+UXMCP_SERVER_3_LABEL=backup
+UXMCP_SERVER_3_HOST=10.0.0.5
+UXMCP_SERVER_3_PORT=2222
+UXMCP_SERVER_3_USER=admin
+UXMCP_SERVER_3_PASSWORD=mypassword
+UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
 ```
 
 **Variable reference:**
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SERVER_N_HOST` | yes | — | Hostname or IP |
-| `SERVER_N_PORT` | — | `22` | SSH port |
-| `SERVER_N_USER` | — | `root` | Login username |
-| `SERVER_N_LABEL` | — | `server-N` | Human-readable name |
-| `SERVER_N_PASSWORD` | yes* | — | SSH password (*if no key) |
-| `SERVER_N_KEY_PATH` | yes* | — | Path to SSH private key |
-| `SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password for `sudo -S` |
+| `UXMCP_SERVER_N_HOST` | yes | — | Hostname or IP |
+| `UXMCP_SERVER_N_PORT` | — | `22` | SSH port |
+| `UXMCP_SERVER_N_USER` | — | `root` | Login username |
+| `UXMCP_SERVER_N_LABEL` | — | `server-N` | Human-readable name |
+| `UXMCP_UXMCP_SERVER_N_PASSWORD` | yes* | — | SSH password (*if no key) |
+| `UXMCP_UXMCP_SERVER_N_KEY_PATH` | yes* | — | Path to SSH private key |
+| `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password for `sudo -S` |
 
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.  
 > If `USER=root`, `use_sudo` is silently ignored for all tools.
@@ -107,7 +107,7 @@ services:
     tty: false            # JSON-RPC is line-delimited, not a TTY
     env_file: .env
     volumes:
-      - ${SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+      - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
     restart: "no"         # MCP servers are spawned on-demand by the client
 ```
 
