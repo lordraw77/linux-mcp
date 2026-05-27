@@ -1,0 +1,18 @@
+{
+  "ds920": {
+    "host": "192.168.0.190",
+    "port": 5000,
+    "https": false,
+    "verify_ssl": false,
+    "user": "admin",
+    "password": "sabrina"
+  },
+  "backup": {
+    "host": "192.168.0.180",
+    "port": 5000,
+    "https": false,
+    "verify_ssl": false,
+    "user": "alessandro",
+    "password": "Lamiagatta.76"
+  }
+}
