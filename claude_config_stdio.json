@@ -1,0 +1,43 @@
+{
+  "_comment": "Configurazione MCP per modalità stdio (Claude Desktop / Claude Code CLI).",
+  "_comment_usage": [
+    "Claude Desktop  → ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
+    "                → %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+    "Claude Code CLI → .claude/settings.json nella root del progetto"
+  ],
+
+  "mcpServers": {
+
+    "linux-ssh": {
+      "_comment": "── Avvio diretto con Python (sorgente locale) ──────────────────────────",
+      "command": "python3.12",
+      "args": ["/opt/linux-mcp/server.py"],
+      "env": {
+        "UXMCP_TRANSPORT": "stdio"
+      }
+    },
+
+    "linux-ssh-docker": {
+      "_comment": "── Avvio tramite Docker run ─────────────────────────────────────────────",
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--env-file", "/opt/linux-mcp/.env",
+        "-e", "UXMCP_TRANSPORT=stdio",
+        "-v", "~/.ssh:/root/.ssh:ro",
+        "lordraw/linux-mcp:latest"
+      ]
+    },
+
+    "linux-ssh-compose": {
+      "_comment": "── Avvio tramite Docker Compose ────────────────────────────────────────",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f", "/opt/linux-mcp/docker-compose.yml",
+        "run", "--rm", "linux-mcp"
+      ]
+    }
+
+  }
+}

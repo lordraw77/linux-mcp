@@ -2,7 +2,15 @@
 
 A **Model Context Protocol (MCP) server** that exposes **48 SSH-based tools** for
 managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop,
-`claude-code` CLI, or `agent.py`) and control your fleet through natural language.
+`claude-code` CLI, Cursor, Cline, or `agent.py`) and control your fleet through
+natural language.
+
+Supports two transport modes:
+
+| Mode | Variable | Use case |
+|---|---|---|
+| **stdio** (default) | `UXMCP_TRANSPORT=stdio` | Claude Desktop, Claude Code CLI — server is launched as a child process |
+| **HTTP SSE** | `UXMCP_TRANSPORT=sse` | Cursor, Cline, Continue, or any HTTP-based MCP client — server runs as a persistent HTTP service |
 
 ---
 
@@ -13,7 +21,10 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 3. [Installation](#installation)
 4. [Configuration](#configuration)
    - [SSH Servers](#ssh-servers)
+   - [Transport Mode](#transport-mode)
 5. [Running the MCP Server](#running-the-mcp-server)
+   - [stdio mode](#stdio-mode)
+   - [SSE mode (HTTP)](#sse-mode-http)
 6. [Docker](#docker)
    - [Quick Start](#quick-start)
    - [Docker Compose](#docker-compose)
@@ -48,26 +59,28 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     MCP Client / Agent                  │
-│  (Claude Desktop, claude-code CLI, or agent.py)         │
-└───────────────────────┬─────────────────────────────────┘
-                        │  stdio  JSON-RPC 2.0
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                     server.py                           │
-│  MCP Server  ·  Protocol: MCP 2024-11-05                │
-│  48 tools registered via @app.list_tools()              │
-└───────────────────────┬─────────────────────────────────┘
-                        │  Python function calls
-                        ▼
-┌─────────────────────────────────────────────────────────┐
-│                  ssh_manager.py                         │
-│  paramiko-based SSH/SFTP connection manager             │
-│  Credentials loaded from .env via python-dotenv         │
-└───────────────────────┬─────────────────────────────────┘
-                        │  SSH / SFTP
-                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     MCP Client / Agent                      │
+│  Claude Desktop · Claude Code CLI · Cursor · Cline · agent  │
+└───────┬─────────────────────────────────────┬───────────────┘
+        │  stdio  JSON-RPC 2.0                │  HTTP SSE (port 8080)
+        │  (UXMCP_TRANSPORT=stdio)            │  (UXMCP_TRANSPORT=sse)
+        ▼                                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        server.py                            │
+│  MCP Server  ·  Protocol: MCP 2024-11-05                    │
+│  48 tools registered via @app.list_tools()                  │
+│  Transport selected via UXMCP_TRANSPORT env var             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │  Python function calls
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     ssh_manager.py                          │
+│  paramiko-based SSH/SFTP connection manager                 │
+│  Credentials loaded from .env via python-dotenv             │
+└───────────────────────────┬─────────────────────────────────┘
+                            │  SSH / SFTP
+                            ▼
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
 │  Server 1    │  │  Server 2    │  │  Server N    │  ...
 │  (root/key)  │  │  (user+sudo) │  │  (any auth)  │
@@ -78,12 +91,14 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 
 | File | Role |
 |---|---|
-| `server.py` | MCP server entry-point; registers and dispatches all 48 tools |
+| `server.py` | MCP server entry-point; registers and dispatches all 48 tools; supports stdio and SSE transports |
 | `ssh_manager.py` | SSH/SFTP connection manager; implements all tool logic |
 | `agent.py` | Interactive CLI agent; supports 7 AI providers |
 | `.env` | Runtime secrets (not committed) |
 | `.env.example` | Template for all configuration variables |
 | `requirements.txt` | Python dependencies |
+| `claude_config_stdio.json` | Ready-to-use MCP config for stdio mode (Claude Desktop / Claude Code) |
+| `claude_config_sse.json` | Ready-to-use MCP config for SSE mode (Cursor, Cline, HTTP clients) |
 
 ---
 
@@ -174,50 +189,120 @@ UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.
 > If the user is `root`, `use_sudo` is silently ignored.
 
+### Transport Mode
+
+All transport settings use the `UXMCP_` prefix in `.env`:
+
+```ini
+# ── Transport ───────────────────────────────────────────────────────────────
+# stdio (default) → Claude Desktop / Claude Code CLI
+# sse             → HTTP + Server-Sent Events (Cursor, Cline, etc.)
+UXMCP_TRANSPORT=stdio
+
+# SSE-only settings (ignored in stdio mode)
+# UXMCP_SSE_HOST=0.0.0.0
+# UXMCP_SSE_PORT=8080
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `UXMCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `sse` |
+| `UXMCP_SSE_HOST` | `0.0.0.0` | Bind address for the SSE HTTP server |
+| `UXMCP_SSE_PORT` | `8080` | TCP port for the SSE HTTP server |
+
 ---
 
 ## Running the MCP Server
 
-The server communicates over **stdio** using JSON-RPC 2.0 as required by the
-MCP protocol. It is not invoked directly but launched by an MCP client.
+### stdio mode
 
-### With Claude Desktop
+The default mode. The server communicates over **stdio** (JSON-RPC 2.0) and is
+launched as a child process by the MCP client.
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`
-(macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "linux-ssh": {
-      "command": "python3.12",
-      "args": ["/opt/linux-mcp/server.py"]
-    }
-  }
-}
-```
-
-### With Claude Code CLI
-
-Add to `.claude/settings.json` in your project root:
+**Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
   "mcpServers": {
     "linux-ssh": {
       "command": "python3.12",
-      "args": ["/opt/linux-mcp/server.py"]
+      "args": ["/opt/linux-mcp/server.py"],
+      "env": { "UXMCP_TRANSPORT": "stdio" }
     }
   }
 }
 ```
 
-### Manual test
+**Claude Code CLI** — `.claude/settings.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "command": "python3.12",
+      "args": ["/opt/linux-mcp/server.py"],
+      "env": { "UXMCP_TRANSPORT": "stdio" }
+    }
+  }
+}
+```
+
+> A ready-to-copy config is available in [claude_config_stdio.json](claude_config_stdio.json).
+
+**Manual test:**
 
 ```bash
-# Verify the server starts and lists tools
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python3.12 server.py
 ```
+
+---
+
+### SSE mode (HTTP)
+
+In SSE mode the server runs as a **persistent HTTP service**. Clients connect to
+`http://<host>:<port>/sse` and send messages via HTTP POST to `/messages/`.
+
+**Start the server locally:**
+
+```bash
+UXMCP_TRANSPORT=sse python3.12 /opt/linux-mcp/server.py
+# → [linux-ssh-mcp] SSE transport listening on http://0.0.0.0:8080/sse
+```
+
+Or with custom host/port:
+
+```bash
+UXMCP_TRANSPORT=sse UXMCP_SSE_HOST=127.0.0.1 UXMCP_SSE_PORT=9000 python3.12 server.py
+```
+
+**Connect from Cursor** — `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "transport": "sse",
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+**Connect from Cline / Continue / any HTTP MCP client:**
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "transport": "sse",
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+> A ready-to-copy config is available in [claude_config_sse.json](claude_config_sse.json).
 
 ---
 
@@ -236,37 +321,46 @@ For the full Docker Hub description see [DOCKER_OVERVIEW.md](DOCKER_OVERVIEW.md)
 
 ### Quick Start
 
+**stdio mode** (default — for Claude Desktop / Claude Code CLI):
+
 ```bash
 # Pull the latest release
 docker pull lordraw/linux-mcp:latest
 
-# Run (reads credentials from your local .env; mount SSH keys if using key auth)
+# Run in stdio mode (keep -i so the MCP client can pipe JSON-RPC messages)
 docker run --rm -i \
   --env-file .env \
+  -e UXMCP_TRANSPORT=stdio \
   -v $HOME/.ssh:/root/.ssh:ro \
   lordraw/linux-mcp
 ```
 
-The container communicates over **stdio** — keep `-i` (interactive) so the MCP
-client can pipe JSON-RPC messages to it.
+**SSE mode** (for Cursor, Cline, or any HTTP MCP client):
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -e UXMCP_TRANSPORT=sse \
+  -p 8080:8080 \
+  -v $HOME/.ssh:/root/.ssh:ro \
+  lordraw/linux-mcp
+# → [linux-ssh-mcp] SSE transport listening on http://0.0.0.0:8080/sse
+```
 
 ---
 
 ### Docker Compose
 
-A ready-to-use [docker-compose.yml](docker-compose.yml) is included:
+A ready-to-use [docker-compose.yml](docker-compose.yml) is included with two
+services, selected via **profiles**.
+
+**stdio service** (for Claude Desktop / Claude Code CLI):
 
 ```bash
 docker compose run --rm linux-mcp
 ```
 
-Set `UXMCP_SSH_KEY_DIR` if your keys live outside `~/.ssh`:
-
-```bash
-UXMCP_SSH_KEY_DIR=/home/deploy/.ssh docker compose run --rm linux-mcp
-```
-
-Wire it up from an MCP client config:
+Wire it into an MCP client config:
 
 ```json
 {
@@ -278,6 +372,24 @@ Wire it up from an MCP client config:
     }
   }
 }
+```
+
+**SSE service** (for Cursor, Cline, Continue):
+
+```bash
+# Start in foreground
+docker compose --profile sse up linux-mcp-sse
+
+# Start in background (daemon)
+docker compose --profile sse up -d linux-mcp-sse
+```
+
+Then connect your client to `http://localhost:8080/sse`.
+
+Set `UXMCP_SSH_KEY_DIR` if your SSH keys live outside `~/.ssh`:
+
+```bash
+UXMCP_SSH_KEY_DIR=/home/deploy/.ssh docker compose --profile sse up linux-mcp-sse
 ```
 
 ---
@@ -320,9 +432,10 @@ docker login -u lordraw
 ### Claude Desktop with Docker
 
 Replace the `python3.12` launcher with the Docker image in your MCP client
-config. The container receives the same `.env` file via `--env-file`.
+config. The container receives credentials via `--env-file`.
 
-**`~/Library/Application Support/Claude/claude_desktop_config.json`** (macOS):
+**`~/Library/Application Support/Claude/claude_desktop_config.json`** (macOS) /
+**`%APPDATA%\Claude\claude_desktop_config.json`** (Windows):
 
 ```json
 {
@@ -332,6 +445,7 @@ config. The container receives the same `.env` file via `--env-file`.
       "args": [
         "run", "--rm", "-i",
         "--env-file", "/opt/linux-mcp/.env",
+        "-e", "UXMCP_TRANSPORT=stdio",
         "lordraw/linux-mcp"
       ]
     }
@@ -349,12 +463,16 @@ config. The container receives the same `.env` file via `--env-file`.
       "args": [
         "run", "--rm", "-i",
         "--env-file", "/opt/linux-mcp/.env",
+        "-e", "UXMCP_TRANSPORT=stdio",
         "lordraw/linux-mcp"
       ]
     }
   }
 }
 ```
+
+> See [claude_config_stdio.json](claude_config_stdio.json) and
+> [claude_config_sse.json](claude_config_sse.json) for ready-to-use configs.
 
 ---
 

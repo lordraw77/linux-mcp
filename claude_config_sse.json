@@ -1,0 +1,33 @@
+{
+  "_comment": "Configurazione MCP per modalità HTTP SSE.",
+  "_comment_usage": [
+    "Prima avvia il server SSE (una delle opzioni sotto), poi aggiungi",
+    "questa configurazione al tuo client MCP.",
+    "",
+    "Avvio locale:  UXMCP_TRANSPORT=sse python3.12 /opt/linux-mcp/server.py",
+    "Avvio Docker:  docker run --rm -p 8080:8080 --env-file .env -e UXMCP_TRANSPORT=sse lordraw/linux-mcp",
+    "Avvio Compose: docker compose --profile sse up linux-mcp-sse",
+    "",
+    "Claude Desktop  → ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
+    "                → %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+    "Claude Code CLI → .claude/settings.json nella root del progetto",
+    "Cursor          → .cursor/mcp.json nella root del progetto",
+    "Cline / Continue → vedi documentazione del client"
+  ],
+
+  "mcpServers": {
+
+    "linux-ssh": {
+      "_comment": "── Connessione a un server SSE già avviato (localhost:8080) ─────────────",
+      "transport": "sse",
+      "url": "http://localhost:8080/sse"
+    },
+
+    "linux-ssh-remote": {
+      "_comment": "── Connessione a un server SSE remoto (es. container su altra macchina) ─",
+      "transport": "sse",
+      "url": "http://192.168.0.140:8080/sse"
+    }
+
+  }
+}

@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """MCP server for SSH access to Linux servers.
 
-Transport  : stdio  (JSON-RPC 2.0 managed by the mcp library)
+Transports : stdio (default) — JSON-RPC 2.0 over stdin/stdout
+             sse             — HTTP + Server-Sent Events (set UXMCP_TRANSPORT=sse)
 Protocol   : MCP 2024-11-05
 Auth       : credentials loaded from .env via python-dotenv
+
+Transport env vars (all with UXMCP_ prefix):
+  UXMCP_TRANSPORT   stdio | sse   (default: stdio)
+  UXMCP_SSE_HOST    bind address  (default: 0.0.0.0)
+  UXMCP_SSE_PORT    TCP port      (default: 8080)
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 from typing import Any
 
 from mcp import types
@@ -1310,11 +1317,48 @@ async def handle_call_tool(
 # Entrypoint
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def main() -> None:
-    """Start the MCP server on stdio."""
+def _transport_config() -> tuple[str, str, int]:
+    """Return (transport, sse_host, sse_port) from UXMCP_ env vars."""
+    transport = os.environ.get("UXMCP_TRANSPORT", "stdio").lower().strip()
+    host = os.environ.get("UXMCP_SSE_HOST", "0.0.0.0")
+    port = int(os.environ.get("UXMCP_SSE_PORT", "8080"))
+    return transport, host, port
+
+
+async def _run_stdio() -> None:
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
 
 
+def _run_sse(host: str, port: int) -> None:
+    from mcp.server.sse import SseServerTransport
+    from starlette.responses import Response
+    import uvicorn
+
+    sse_transport = SseServerTransport("/messages/")
+
+    async def asgi_app(scope, receive, send):
+        path = scope.get("path", "")
+        if scope["type"] == "http" and path == "/sse":
+            async with sse_transport.connect_sse(scope, receive, send) as streams:
+                await app.run(
+                    streams[0], streams[1],
+                    app.create_initialization_options(),
+                )
+            return
+        if scope["type"] == "http" and path.startswith("/messages/"):
+            await sse_transport.handle_post_message(scope, receive, send)
+            return
+        await Response("Not Found", status_code=404)(scope, receive, send)
+
+    print(f"[linux-ssh-mcp] SSE transport listening on http://{host}:{port}/sse",
+          flush=True)
+    uvicorn.run(asgi_app, host=host, port=port)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    transport, sse_host, sse_port = _transport_config()
+    if transport == "sse":
+        _run_sse(sse_host, sse_port)
+    else:
+        asyncio.run(_run_stdio())

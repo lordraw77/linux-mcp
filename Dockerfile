@@ -21,8 +21,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ssh_manager.py ./
 
-# .env is mounted at runtime, never baked into the image
 ENV PYTHONUNBUFFERED=1
 
-# MCP servers communicate over stdio
+# Transport mode: stdio (default) | sse
+# Override with -e UXMCP_TRANSPORT=sse at runtime.
+ENV UXMCP_TRANSPORT=stdio
+ENV UXMCP_SSE_HOST=0.0.0.0
+ENV UXMCP_SSE_PORT=8080
+
+# Expose SSE port (only used when UXMCP_TRANSPORT=sse)
+EXPOSE 8080
+
+# .env is mounted at runtime, never baked into the image
 ENTRYPOINT ["python", "server.py"]

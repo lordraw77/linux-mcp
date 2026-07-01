@@ -1,12 +1,49 @@
 services:
+
+  # ── Modalità stdio (default) ─────────────────────────────────────────────────
+  # Usata da Claude Desktop / Claude Code CLI come processo figlio.
+  # Il client MCP avvia il container e comunica via stdin/stdout.
+  #
+  #   docker compose run --rm linux-mcp
+  #
   linux-mcp:
+    build: .
     image: lordraw/linux-mcp:latest
-    # stdin_open is required: MCP communicates over stdio (JSON-RPC 2.0)
+    profiles: ["stdio", "default"]
+    # stdin_open è obbligatorio: MCP comunica via stdio (JSON-RPC 2.0)
     stdin_open: true
     tty: false
     env_file: .env
+    environment:
+      UXMCP_TRANSPORT: stdio
     volumes:
-      # Mount SSH keys so UXMCP_SERVER_N_KEY_PATH paths resolve inside the container.
-      # Override UXMCP_SSH_KEY_DIR if your keys live elsewhere.
+      # Monta le chiavi SSH in modo che i path UXMCP_SERVER_N_KEY_PATH siano
+      # raggiungibili all'interno del container.
       - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
-    restart: "no"   # MCP servers are spawned on-demand by the client, not kept running
+    restart: "no"   # i server MCP vengono avviati on-demand, non tenuti in esecuzione
+
+  # ── Modalità SSE (HTTP) ──────────────────────────────────────────────────────
+  # Usata da client che comunicano via HTTP + Server-Sent Events
+  # (Cursor, Cline, Continue, o qualsiasi client MCP HTTP).
+  #
+  #   docker compose --profile sse up linux-mcp-sse
+  #   # oppure in background:
+  #   docker compose --profile sse up -d linux-mcp-sse
+  #
+  # Connettiti poi con:   http://localhost:<UXMCP_SSE_PORT>/sse
+  #
+  linux-mcp-sse:
+    build: .
+    image: lordraw/linux-mcp:latest
+    profiles: ["sse"]
+    env_file: .env
+    environment:
+      UXMCP_TRANSPORT: sse
+      UXMCP_SSE_HOST: "0.0.0.0"
+      UXMCP_SSE_PORT: "${UXMCP_SSE_PORT:-9880}"
+    ports:
+      # host_port:container_port — entrambi usano UXMCP_SSE_PORT
+      - "${UXMCP_SSE_PORT:-9880}:${UXMCP_SSE_PORT:-9880}"
+    volumes:
+      - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+    restart: unless-stopped
