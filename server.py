@@ -2,18 +2,21 @@
 """MCP server for SSH access to Linux servers.
 
 Transports : stdio (default) — JSON-RPC 2.0 over stdin/stdout
-             sse             — HTTP + Server-Sent Events (set UXMCP_TRANSPORT=sse)
+             streamable-http — MCP Streamable HTTP, endpoint /mcp (UXMCP_TRANSPORT=streamable-http)
+             sse             — legacy HTTP + SSE, deprecated (UXMCP_TRANSPORT=sse)
 Protocol   : MCP 2024-11-05
 Auth       : credentials loaded from .env via python-dotenv
 
 Transport env vars (all with UXMCP_ prefix):
-  UXMCP_TRANSPORT   stdio | sse   (default: stdio)
-  UXMCP_SSE_HOST    bind address  (default: 0.0.0.0)
-  UXMCP_SSE_PORT    TCP port      (default: 8080)
+  UXMCP_TRANSPORT   stdio | streamable-http | sse   (default: stdio)
+  UXMCP_HTTP_HOST   bind address  (default: 0.0.0.0, both HTTP transports)
+  UXMCP_HTTP_PORT   TCP port      (default: 8080, both HTTP transports)
+  UXMCP_SSE_HOST / UXMCP_SSE_PORT are still honoured as legacy fallbacks.
 """
 
 from __future__ import annotations
 
+import sys
 import asyncio
 import json
 import os
@@ -1318,16 +1321,42 @@ async def handle_call_tool(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _transport_config() -> tuple[str, str, int]:
-    """Return (transport, sse_host, sse_port) from UXMCP_ env vars."""
+    """Return (transport, host, port) from UXMCP_ env vars.
+
+    UXMCP_HTTP_* take precedence; UXMCP_SSE_* are kept as legacy fallbacks.
+    """
     transport = os.environ.get("UXMCP_TRANSPORT", "stdio").lower().strip()
-    host = os.environ.get("UXMCP_SSE_HOST", "0.0.0.0")
-    port = int(os.environ.get("UXMCP_SSE_PORT", "8080"))
+    host = os.environ.get("UXMCP_HTTP_HOST") or os.environ.get("UXMCP_SSE_HOST", "0.0.0.0")
+    port = int(os.environ.get("UXMCP_HTTP_PORT") or os.environ.get("UXMCP_SSE_PORT", "8080"))
     return transport, host, port
 
 
 async def _run_stdio() -> None:
     async with stdio_server() as (read_stream, write_stream):
         await app.run(read_stream, write_stream, app.create_initialization_options())
+
+
+def _run_streamable_http(host: str, port: int) -> None:
+    import contextlib
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+    import uvicorn
+
+    session_manager = StreamableHTTPSessionManager(app=app)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_: Starlette):
+        async with session_manager.run():
+            yield
+
+    starlette_app = Starlette(
+        routes=[Mount("/mcp", app=session_manager.handle_request)],
+        lifespan=lifespan,
+    )
+    print(f"[linux-ssh-mcp] Streamable HTTP transport listening on "
+          f"http://{host}:{port}/mcp", flush=True)
+    uvicorn.run(starlette_app, host=host, port=port)
 
 
 def _run_sse(host: str, port: int) -> None:
@@ -1358,7 +1387,11 @@ def _run_sse(host: str, port: int) -> None:
 
 if __name__ == "__main__":
     transport, sse_host, sse_port = _transport_config()
-    if transport == "sse":
+    if transport in ("streamable-http", "streamable_http", "http"):
+        _run_streamable_http(sse_host, sse_port)
+    elif transport == "sse":
+        print("[linux-ssh-mcp] WARNING: SSE transport is deprecated in the MCP "
+              "spec; use UXMCP_TRANSPORT=streamable-http", file=sys.stderr, flush=True)
         _run_sse(sse_host, sse_port)
     else:
         asyncio.run(_run_stdio())

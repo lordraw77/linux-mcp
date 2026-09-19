@@ -1,5 +1,5 @@
 {
-  "_comment": "Configurazione MCP per modalità HTTP SSE.",
+  "_comment": "Configurazione MCP per modalità HTTP SSE (DEPRECATA, solo retrocompatibilità: usare claude_config_http.json).",
   "_comment_usage": [
     "Prima avvia il server SSE (una delle opzioni sotto), poi aggiungi",
     "questa configurazione al tuo client MCP.",

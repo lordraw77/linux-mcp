@@ -22,7 +22,34 @@ services:
       - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
     restart: "no"   # i server MCP vengono avviati on-demand, non tenuti in esecuzione
 
-  # ── Modalità SSE (HTTP) ──────────────────────────────────────────────────────
+  # ── Modalità Streamable HTTP ─────────────────────────────────────────────────
+  # Trasporto HTTP raccomandato (spec MCP): endpoint unico /mcp.
+  # Usato da Cursor, Cline, Continue, o qualsiasi client MCP HTTP.
+  #
+  #   docker compose --profile http up linux-mcp-http
+  #   # oppure in background:
+  #   docker compose --profile http up -d linux-mcp-http
+  #
+  # Connettiti poi con:   http://localhost:<UXMCP_HTTP_PORT>/mcp
+  #
+  linux-mcp-http:
+    build: .
+    image: lordraw/linux-mcp:latest
+    profiles: ["http"]
+    env_file: .env
+    environment:
+      UXMCP_TRANSPORT: streamable-http
+      UXMCP_HTTP_HOST: "0.0.0.0"
+      UXMCP_HTTP_PORT: "${UXMCP_HTTP_PORT:-9880}"
+    ports:
+      # host_port:container_port — entrambi usano UXMCP_HTTP_PORT
+      - "${UXMCP_HTTP_PORT:-9880}:${UXMCP_HTTP_PORT:-9880}"
+    volumes:
+      - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
+    restart: unless-stopped
+
+  # ── Modalità SSE (HTTP) — DEPRECATA, solo retrocompatibilità ────────────────
+  # Preferire linux-mcp-http (Streamable HTTP).
   # Usata da client che comunicano via HTTP + Server-Sent Events
   # (Cursor, Cline, Continue, o qualsiasi client MCP HTTP).
   #

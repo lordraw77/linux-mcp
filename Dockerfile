@@ -23,13 +23,12 @@ COPY server.py ssh_manager.py ./
 
 ENV PYTHONUNBUFFERED=1
 
-# Transport mode: stdio (default) | sse
-# Override with -e UXMCP_TRANSPORT=sse at runtime.
+# Transport mode: stdio (default) | streamable-http | sse (deprecated)
+# Override with -e UXMCP_TRANSPORT=streamable-http at runtime.
 ENV UXMCP_TRANSPORT=stdio
-ENV UXMCP_SSE_HOST=0.0.0.0
-ENV UXMCP_SSE_PORT=8080
+# Host/port default to 0.0.0.0:8080 (UXMCP_HTTP_HOST / UXMCP_HTTP_PORT)
 
-# Expose SSE port (only used when UXMCP_TRANSPORT=sse)
+# Expose HTTP port (only used when UXMCP_TRANSPORT=streamable-http or sse)
 EXPOSE 8080
 
 # .env is mounted at runtime, never baked into the image

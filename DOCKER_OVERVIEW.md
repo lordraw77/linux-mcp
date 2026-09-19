@@ -2,7 +2,7 @@
 
 **An MCP server that gives any AI client full control over your Linux fleet through SSH — no agent installed on the remote hosts, just standard OpenSSH.**
 
-Connect Claude Desktop, the Claude Code CLI, or any Model Context Protocol-compatible client to this container and manage your servers with plain English.
+Connect Claude Desktop, the Claude Code CLI, Cursor, Cline, or any Model Context Protocol-compatible client to this container and manage your servers with plain English.
 
 ---
 
@@ -11,7 +11,8 @@ Connect Claude Desktop, the Claude Code CLI, or any Model Context Protocol-compa
 | Component | Detail |
 |---|---|
 | Base image | `python:3.12-slim` |
-| MCP protocol | 2024-11-05 (stdio / JSON-RPC 2.0) |
+| MCP protocol | 2024-11-05 |
+| Transports | **stdio** (JSON-RPC 2.0) · **Streamable HTTP** · SSE (legacy, deprecated) |
 | SSH library | `paramiko` |
 | Tools exposed | **48** |
 | Auth methods | SSH key, password, or SSH agent |
@@ -23,24 +24,71 @@ No secrets are baked into the image — credentials are passed at runtime via `-
 
 ---
 
+## Transport modes
+
+| Mode | When to use | How clients connect |
+|---|---|---|
+| `stdio` (default) | Claude Desktop, Claude Code CLI — client spawns the container as a child process | JSON-RPC 2.0 over stdin/stdout |
+| `streamable-http` | Cursor, Cline, Continue, or any HTTP-capable MCP client — container runs as a persistent service | `http://<host>:<port>/mcp` |
+| `sse` *(deprecated)* | Legacy HTTP+SSE clients only — kept for backward compatibility | `http://<host>:<port>/sse` |
+
+---
+
 ## Quick start
+
+### stdio mode (Claude Desktop / Claude Code)
 
 ```bash
 # 1. Create your .env from the template
-curl -fsSL https://raw.githubusercontent.com/lordraw/linux-mcp/main/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/lordraw77/linux-mcp/main/.env.example -o .env
 $EDITOR .env   # fill in your SSH servers
 
-# 2. Run
+# 2. Run (keep -i so the MCP client can pipe JSON-RPC to stdin)
 docker run --rm -i --env-file .env lordraw/linux-mcp
 ```
 
-The container speaks **stdio** — always keep `-i` so your MCP client can pipe JSON-RPC to it.
+### Streamable HTTP mode (Cursor / Cline / HTTP clients)
+
+```bash
+# 1. Create your .env from the template (set UXMCP_TRANSPORT=streamable-http)
+curl -fsSL https://raw.githubusercontent.com/lordraw77/linux-mcp/main/.env.example -o .env
+$EDITOR .env
+
+# 2. Run as a persistent HTTP service
+docker run --rm -p 9880:9880 \
+  --env-file .env \
+  -e UXMCP_TRANSPORT=streamable-http \
+  -e UXMCP_HTTP_PORT=9880 \
+  lordraw/linux-mcp
+
+# Connect your MCP client to:  http://localhost:9880/mcp
+```
+
+> The legacy `UXMCP_TRANSPORT=sse` mode (endpoint `/sse`) is deprecated but still supported.
 
 ---
 
 ## Configuration
 
-All configuration lives in a single `.env` file. Add one numbered block per server; the loader stops at the first missing `UXMCP_SERVER_N_HOST`.
+All configuration lives in a single `.env` file.
+
+### Transport
+
+```ini
+# stdio (default) — client spawns the container via stdin/stdout
+UXMCP_TRANSPORT=stdio
+
+# streamable-http — container runs as a persistent HTTP service (endpoint /mcp)
+# UXMCP_TRANSPORT=streamable-http
+# UXMCP_HTTP_HOST=0.0.0.0   # bind address (default: 0.0.0.0)
+# UXMCP_HTTP_PORT=8080      # TCP port     (default: 8080)
+
+# sse — legacy, deprecated (endpoint /sse); UXMCP_SSE_HOST/PORT still work as fallbacks
+```
+
+### SSH servers
+
+Add one numbered block per server; the loader stops at the first missing `UXMCP_SERVER_N_HOST`.
 
 ```ini
 # ── Server 1: root via SSH key ─────────────────────────────────────────────
@@ -71,13 +119,16 @@ UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
+| `UXMCP_TRANSPORT` | — | `stdio` | Transport mode: `stdio`, `streamable-http` or `sse` (deprecated) |
+| `UXMCP_HTTP_HOST` | — | `0.0.0.0` | Bind address (HTTP modes only; legacy alias `UXMCP_SSE_HOST`) |
+| `UXMCP_HTTP_PORT` | — | `8080` | TCP port (HTTP modes only; legacy alias `UXMCP_SSE_PORT`) |
 | `UXMCP_SERVER_N_HOST` | yes | — | Hostname or IP |
 | `UXMCP_SERVER_N_PORT` | — | `22` | SSH port |
 | `UXMCP_SERVER_N_USER` | — | `root` | Login username |
 | `UXMCP_SERVER_N_LABEL` | — | `server-N` | Human-readable name |
-| `UXMCP_UXMCP_SERVER_N_PASSWORD` | yes* | — | SSH password (*if no key) |
-| `UXMCP_UXMCP_SERVER_N_KEY_PATH` | yes* | — | Path to SSH private key |
-| `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password for `sudo -S` |
+| `UXMCP_SERVER_N_PASSWORD` | yes* | — | SSH password (*if no key) |
+| `UXMCP_SERVER_N_KEY_PATH` | yes* | — | Path to SSH private key |
+| `UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password for `sudo -S` |
 
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.  
 > If `USER=root`, `use_sudo` is silently ignored for all tools.
@@ -97,45 +148,36 @@ docker run --rm -i \
 
 ## Docker Compose
 
-Save as `docker-compose.yml` next to your `.env`:
+The bundled `docker-compose.yml` provides two services selectable via profiles.
 
-```yaml
-services:
-  linux-mcp:
-    image: lordraw/linux-mcp:latest
-    stdin_open: true      # required for stdio MCP transport
-    tty: false            # JSON-RPC is line-delimited, not a TTY
-    env_file: .env
-    volumes:
-      - ${UXMCP_SSH_KEY_DIR:-~/.ssh}:/root/.ssh:ro
-    restart: "no"         # MCP servers are spawned on-demand by the client
-```
-
-Run it:
+### stdio (default)
 
 ```bash
 docker compose run --rm linux-mcp
 ```
 
-Or reference it from Claude Desktop / Claude Code as:
+### Streamable HTTP (persistent HTTP service)
 
-```json
-{
-  "mcpServers": {
-    "linux-ssh": {
-      "command": "docker",
-      "args": ["compose", "-f", "/opt/linux-mcp/docker-compose.yml",
-               "run", "--rm", "linux-mcp"]
-    }
-  }
-}
+```bash
+# Start in background
+docker compose --profile http up -d linux-mcp-http
+
+# View logs
+docker compose logs -f linux-mcp-http
+
+# Stop
+docker compose --profile http down
 ```
+
+The service listens on `UXMCP_HTTP_PORT` (default `9880` in compose, or override in `.env`).
+
+> Legacy: `docker compose --profile sse up -d linux-mcp-sse` (deprecated SSE, endpoint `/sse`) is still available.
 
 ---
 
 ## Connecting to MCP clients
 
-### Claude Desktop
+### Claude Desktop — stdio
 
 `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) /  
 `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
@@ -147,8 +189,8 @@ Or reference it from Claude Desktop / Claude Code as:
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "--env-file", "/opt/linux-mcp/.env",
-        "-v", "/root/.ssh:/root/.ssh:ro",
+        "--env-file", "/path/to/.env",
+        "-v", "/home/user/.ssh:/root/.ssh:ro",
         "lordraw/linux-mcp"
       ]
     }
@@ -156,7 +198,7 @@ Or reference it from Claude Desktop / Claude Code as:
 }
 ```
 
-### Claude Code CLI
+### Claude Code CLI — stdio
 
 `.claude/settings.json` in your project root:
 
@@ -167,14 +209,37 @@ Or reference it from Claude Desktop / Claude Code as:
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "--env-file", "/opt/linux-mcp/.env",
-        "-v", "/root/.ssh:/root/.ssh:ro",
+        "--env-file", "/path/to/.env",
+        "-v", "/home/user/.ssh:/root/.ssh:ro",
         "lordraw/linux-mcp"
       ]
     }
   }
 }
 ```
+
+### Cursor / Cline / Continue — Streamable HTTP
+
+Start the HTTP service first (see above), then point the client at:
+
+```
+http://localhost:8080/mcp
+```
+
+Cursor (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+Legacy SSE clients: `"transport": "sse"`, `"url": "http://localhost:8080/sse"` (deprecated).
 
 ---
 

@@ -1,0 +1,31 @@
+{
+  "_comment": "Configurazione MCP per modalità Streamable HTTP (trasporto HTTP raccomandato).",
+  "_comment_usage": [
+    "Prima avvia il server HTTP (una delle opzioni sotto), poi aggiungi",
+    "questa configurazione al tuo client MCP.",
+    "",
+    "Avvio locale:  UXMCP_TRANSPORT=streamable-http python3.12 /opt/linux-mcp/server.py",
+    "Avvio Docker:  docker run --rm -p 8080:8080 --env-file .env -e UXMCP_TRANSPORT=streamable-http lordraw/linux-mcp",
+    "Avvio Compose: docker compose --profile http up linux-mcp-http",
+    "",
+    "Claude Code CLI → .mcp.json nella root del progetto (oppure: claude mcp add --transport http linux-ssh http://localhost:8080/mcp)",
+    "Cursor          → .cursor/mcp.json nella root del progetto",
+    "Cline / Continue → vedi documentazione del client"
+  ],
+
+  "mcpServers": {
+
+    "linux-ssh": {
+      "_comment": "── Connessione a un server Streamable HTTP già avviato (localhost:8080) ─",
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    },
+
+    "linux-ssh-remote": {
+      "_comment": "── Connessione a un server remoto (es. container su altra macchina) ─────",
+      "type": "http",
+      "url": "http://192.168.0.140:8080/mcp"
+    }
+
+  }
+}

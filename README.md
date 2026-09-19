@@ -5,12 +5,13 @@ managing remote Linux servers. Connect any MCP-compatible client (Claude Desktop
 `claude-code` CLI, Cursor, Cline, or `agent.py`) and control your fleet through
 natural language.
 
-Supports two transport modes:
+Supports three transport modes:
 
 | Mode | Variable | Use case |
 |---|---|---|
 | **stdio** (default) | `UXMCP_TRANSPORT=stdio` | Claude Desktop, Claude Code CLI — server is launched as a child process |
-| **HTTP SSE** | `UXMCP_TRANSPORT=sse` | Cursor, Cline, Continue, or any HTTP-based MCP client — server runs as a persistent HTTP service |
+| **Streamable HTTP** | `UXMCP_TRANSPORT=streamable-http` | Cursor, Cline, Continue, or any HTTP-based MCP client — server runs as a persistent HTTP service (endpoint `/mcp`) |
+| **HTTP SSE** *(deprecated)* | `UXMCP_TRANSPORT=sse` | Legacy clients only — kept for backward compatibility (endpoint `/sse`) |
 
 ---
 
@@ -24,7 +25,8 @@ Supports two transport modes:
    - [Transport Mode](#transport-mode)
 5. [Running the MCP Server](#running-the-mcp-server)
    - [stdio mode](#stdio-mode)
-   - [SSE mode (HTTP)](#sse-mode-http)
+   - [Streamable HTTP mode](#streamable-http-mode)
+   - [SSE mode (deprecated)](#sse-mode-deprecated)
 6. [Docker](#docker)
    - [Quick Start](#quick-start)
    - [Docker Compose](#docker-compose)
@@ -63,7 +65,7 @@ Supports two transport modes:
 │                     MCP Client / Agent                      │
 │  Claude Desktop · Claude Code CLI · Cursor · Cline · agent  │
 └───────┬─────────────────────────────────────┬───────────────┘
-        │  stdio  JSON-RPC 2.0                │  HTTP SSE (port 8080)
+        │  stdio  JSON-RPC 2.0                │  HTTP /mcp (port 8080)
         │  (UXMCP_TRANSPORT=stdio)            │  (UXMCP_TRANSPORT=sse)
         ▼                                     ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -91,14 +93,15 @@ Supports two transport modes:
 
 | File | Role |
 |---|---|
-| `server.py` | MCP server entry-point; registers and dispatches all 48 tools; supports stdio and SSE transports |
+| `server.py` | MCP server entry-point; registers and dispatches all 48 tools; supports stdio, Streamable HTTP and (legacy) SSE transports |
 | `ssh_manager.py` | SSH/SFTP connection manager; implements all tool logic |
 | `agent.py` | Interactive CLI agent; supports 7 AI providers |
 | `.env` | Runtime secrets (not committed) |
 | `.env.example` | Template for all configuration variables |
 | `requirements.txt` | Python dependencies |
 | `claude_config_stdio.json` | Ready-to-use MCP config for stdio mode (Claude Desktop / Claude Code) |
-| `claude_config_sse.json` | Ready-to-use MCP config for SSE mode (Cursor, Cline, HTTP clients) |
+| `claude_config_http.json` | Ready-to-use MCP config for Streamable HTTP mode (Cursor, Cline, HTTP clients) |
+| `claude_config_sse.json` | MCP config for the legacy SSE mode (deprecated) |
 
 ---
 
@@ -196,19 +199,21 @@ All transport settings use the `UXMCP_` prefix in `.env`:
 ```ini
 # ── Transport ───────────────────────────────────────────────────────────────
 # stdio (default) → Claude Desktop / Claude Code CLI
-# sse             → HTTP + Server-Sent Events (Cursor, Cline, etc.)
+# streamable-http → HTTP Streamable, endpoint /mcp (Cursor, Cline, etc.)
+# sse             → HTTP + SSE, deprecated (endpoint /sse)
 UXMCP_TRANSPORT=stdio
 
-# SSE-only settings (ignored in stdio mode)
-# UXMCP_SSE_HOST=0.0.0.0
-# UXMCP_SSE_PORT=8080
+# HTTP-only settings (ignored in stdio mode)
+# UXMCP_HTTP_HOST=0.0.0.0
+# UXMCP_HTTP_PORT=8080
+# (legacy aliases UXMCP_SSE_HOST / UXMCP_SSE_PORT still work)
 ```
 
 | Variable | Default | Description |
 |---|---|---|
-| `UXMCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `sse` |
-| `UXMCP_SSE_HOST` | `0.0.0.0` | Bind address for the SSE HTTP server |
-| `UXMCP_SSE_PORT` | `8080` | TCP port for the SSE HTTP server |
+| `UXMCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `streamable-http` or `sse` (deprecated) |
+| `UXMCP_HTTP_HOST` | `0.0.0.0` | Bind address for the HTTP server (legacy alias `UXMCP_SSE_HOST`) |
+| `UXMCP_HTTP_PORT` | `8080` | TCP port for the HTTP server (legacy alias `UXMCP_SSE_PORT`) |
 
 ---
 
@@ -258,25 +263,56 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | python3.12 s
 
 ---
 
-### SSE mode (HTTP)
+### Streamable HTTP mode
 
-In SSE mode the server runs as a **persistent HTTP service**. Clients connect to
-`http://<host>:<port>/sse` and send messages via HTTP POST to `/messages/`.
+In this mode the server runs as a **persistent HTTP service** exposing a single
+MCP endpoint, `http://<host>:<port>/mcp` (the transport recommended by the MCP spec).
 
 **Start the server locally:**
 
 ```bash
-UXMCP_TRANSPORT=sse python3.12 /opt/linux-mcp/server.py
-# → [linux-ssh-mcp] SSE transport listening on http://0.0.0.0:8080/sse
+UXMCP_TRANSPORT=streamable-http python3.12 /opt/linux-mcp/server.py
+# → [linux-ssh-mcp] Streamable HTTP transport listening on http://0.0.0.0:8080/mcp
 ```
 
 Or with custom host/port:
 
 ```bash
-UXMCP_TRANSPORT=sse UXMCP_SSE_HOST=127.0.0.1 UXMCP_SSE_PORT=9000 python3.12 server.py
+UXMCP_TRANSPORT=streamable-http UXMCP_HTTP_HOST=127.0.0.1 UXMCP_HTTP_PORT=9000 python3.12 server.py
 ```
 
-**Connect from Cursor** — `.cursor/mcp.json` in your project root:
+**Connect from Cursor / Cline / Continue / any HTTP MCP client:**
+
+```json
+{
+  "mcpServers": {
+    "linux-ssh": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+**Claude Code CLI:**
+
+```bash
+claude mcp add --transport http linux-ssh http://localhost:8080/mcp
+```
+
+> A ready-to-copy config is available in [claude_config_http.json](claude_config_http.json).
+
+---
+
+### SSE mode (deprecated)
+
+The old HTTP+SSE transport is deprecated in the MCP spec but still supported for
+backward compatibility. Clients connect to `http://<host>:<port>/sse` and POST
+messages to `/messages/`. The server prints a deprecation warning at startup.
+
+```bash
+UXMCP_TRANSPORT=sse python3.12 /opt/linux-mcp/server.py
+```
 
 ```json
 {
@@ -289,20 +325,7 @@ UXMCP_TRANSPORT=sse UXMCP_SSE_HOST=127.0.0.1 UXMCP_SSE_PORT=9000 python3.12 serv
 }
 ```
 
-**Connect from Cline / Continue / any HTTP MCP client:**
-
-```json
-{
-  "mcpServers": {
-    "linux-ssh": {
-      "transport": "sse",
-      "url": "http://localhost:8080/sse"
-    }
-  }
-}
-```
-
-> A ready-to-copy config is available in [claude_config_sse.json](claude_config_sse.json).
+See [claude_config_sse.json](claude_config_sse.json). Prefer Streamable HTTP for new setups.
 
 ---
 
