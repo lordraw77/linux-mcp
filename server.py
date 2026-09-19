@@ -1340,7 +1340,7 @@ def _run_streamable_http(host: str, port: int) -> None:
     import contextlib
     from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
     from starlette.applications import Starlette
-    from starlette.routing import Mount
+    from starlette.routing import Route
     import uvicorn
 
     session_manager = StreamableHTTPSessionManager(app=app)
@@ -1350,8 +1350,12 @@ def _run_streamable_http(host: str, port: int) -> None:
         async with session_manager.run():
             yield
 
+    class _McpEndpoint:  # raw ASGI app: Route would wrap a bound method as request/response
+        async def __call__(self, scope, receive, send):
+            await session_manager.handle_request(scope, receive, send)
+
     starlette_app = Starlette(
-        routes=[Mount("/mcp", app=session_manager.handle_request)],
+        routes=[Route("/mcp", endpoint=_McpEndpoint())],
         lifespan=lifespan,
     )
     print(f"[linux-ssh-mcp] Streamable HTTP transport listening on "
