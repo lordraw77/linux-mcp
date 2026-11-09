@@ -31,7 +31,7 @@ class ServerConfig:
     password: Optional[str]
     key_path: Optional[str]
     sudo_password: Optional[str]
-
+    vmid: Optional[str]
     @property
     def is_root(self) -> bool:
         return self.user == "root"
@@ -79,6 +79,7 @@ def load_servers() -> dict[str, ServerConfig]:
             password=os.getenv(f"UXMCP_SERVER_{i}_PASSWORD") or None,
             key_path=os.getenv(f"UXMCP_SERVER_{i}_KEY_PATH") or None,
             sudo_password=os.getenv(f"UXMCP_SERVER_{i}_SUDO_PASSWORD") or None,
+            vmid=os.getenv(f"UXMCP_SERVER_{i}_VMID") or None,
         )
         i += 1
     return servers
