@@ -123,13 +123,13 @@ UXMCP_SERVER_4_TAGS=web;production
 
 # ── Server 5: password auth + tags + vmid ───────────────────────────────
 UXMCP_SERVER_5_LABEL=vm-server
-UXMCP_SERVER_5_HOST=10.0.0.5 
+UXMCP_SERVER_5_HOST=10.0.0.5
 UXMCP_SERVER_5_PORT=2222
 UXMCP_SERVER_5_USER=admin
 UXMCP_SERVER_5_PASSWORD=mypassword
 UXMCP_SERVER_5_SUDO_PASSWORD=mypassword
 UXMCP_SERVER_5_VMID=103
-UXMCP_SERVER_5_TAGS=community-script;postgres 
+UXMCP_SERVER_5_TAGS=community-script;postgres
 
 ```
 

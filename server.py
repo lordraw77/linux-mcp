@@ -45,10 +45,19 @@ async def handle_list_tools() -> list[types.Tool]:
             name="list_servers",
             description=(
                 "List all configured SSH servers "
-                "(id, label, host, port, user, auth type). "
-                "No credentials are returned."
+                "(id, label, host, port, user, auth type, vmid, tags). "
+                "Optionally filter by tag. No credentials are returned."
             ),
-            inputSchema={"type": "object", "properties": {}, "required": []},
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string",
+                        "description": "Only return servers having this tag (case-insensitive).",
+                    },
+                },
+                "required": [],
+            },
         ),
         types.Tool(
             name="execute_command",
@@ -1020,8 +1029,8 @@ async def _dispatch(name: str, a: dict) -> Any:  # noqa: PLR0911
     """
     # ── Core ──────────────────────────────────────────────────────────────────
     if name == "list_servers":
-        servers = ssh.list_servers()
-        return servers or "No servers configured. Copy .env.example to .env."
+        servers = ssh.list_servers(a.get("tag"))
+        return servers or "No servers found (check .env or the tag filter)."
 
     if name == "execute_command":
         r = await _run(

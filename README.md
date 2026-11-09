@@ -186,13 +186,13 @@ UXMCP_SERVER_4_TAGS=web;production
 
 # ── Server 5: password auth + tags + vmid ───────────────────────────────
 UXMCP_SERVER_5_LABEL=vm-server
-UXMCP_SERVER_5_HOST=10.0.0.5 
+UXMCP_SERVER_5_HOST=10.0.0.5
 UXMCP_SERVER_5_PORT=2222
 UXMCP_SERVER_5_USER=admin
 UXMCP_SERVER_5_PASSWORD=mypassword
 UXMCP_SERVER_5_SUDO_PASSWORD=mypassword
 UXMCP_SERVER_5_VMID=103
-UXMCP_SERVER_5_TAGS=community-script;postgres 
+UXMCP_SERVER_5_TAGS=community-script;postgres
 
 ```
 
@@ -204,11 +204,11 @@ UXMCP_SERVER_5_TAGS=community-script;postgres
 | `UXMCP_SERVER_N_PORT` | — | `22` | SSH port |
 | `UXMCP_SERVER_N_USER` | — | `root` | SSH login username |
 | `UXMCP_SERVER_N_LABEL` | — | `server-N` | Human-readable name (shown in listings) |
-| `UXMCP_UXMCP_SERVER_N_PASSWORD` | ✅* | — | SSH password (*required if no KEY_PATH) |
-| `UXMCP_UXMCP_SERVER_N_KEY_PATH` | ✅* | — | Absolute path to SSH private key |
-| `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password used for `sudo -S` |
-| `UXMCP_SERVER_N_TAGS` | — | — | Semicolon-separated tags for filtering servers |
-| `UXMCP_SERVER_N_VMID` | — | — | Optional virtual machine ID for the server |
+| `UXMCP_SERVER_N_PASSWORD` | ✅* | — | SSH password (*required if no KEY_PATH) |
+| `UXMCP_SERVER_N_KEY_PATH` | ✅* | — | Absolute path to SSH private key |
+| `UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password used for `sudo -S` |
+| `UXMCP_SERVER_N_TAGS` | — | — | Semicolon-separated tags, returned by `list_servers` and usable with its `tag` filter |
+| `UXMCP_SERVER_N_VMID` | — | — | Optional VM/CT ID (e.g. Proxmox), returned by `list_servers` |
 
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.
 > If the user is `root`, `use_sudo` is silently ignored.
@@ -642,7 +642,7 @@ requests. Below are representative examples grouped by category.
 ## Tool Reference
 
 All tools accept `server_id` (string) as their first required parameter, except
-`list_servers` (no parameters) and `broadcast_command` (takes `server_ids` array).
+`list_servers` (optional `tag` filter only) and `broadcast_command` (takes `server_ids` array).
 
 ---
 
@@ -652,7 +652,11 @@ All tools accept `server_id` (string) as their first required parameter, except
 
 Returns the list of all configured servers. No credentials are included.
 
-**Parameters:** none
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `tag` | string | no | Only return servers having this tag (case-insensitive) |
 
 **Returns:**
 ```json
@@ -664,7 +668,9 @@ Returns the list of all configured servers. No credentials are included.
     "port": 22,
     "user": "root",
     "auth": "key",
-    "is_root": true
+    "is_root": true,
+    "vmid": "103",
+    "tags": ["web", "production"]
   }
 ]
 ```
@@ -691,7 +697,7 @@ Executes an arbitrary shell command on the remote server.
 
 **Notes:**
 - When `use_sudo=true` and the user is not root, a PTY channel is opened and
-  `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` (or `UXMCP_UXMCP_SERVER_N_PASSWORD`) is written to stdin.
+  `UXMCP_SERVER_N_SUDO_PASSWORD` (or `UXMCP_SERVER_N_PASSWORD`) is written to stdin.
 
 ---
 
@@ -1559,10 +1565,10 @@ bulk operations (e.g. pulling updated configs).
 
 Three authentication methods are supported, in priority order:
 
-1. **SSH private key** (`UXMCP_UXMCP_SERVER_N_KEY_PATH`): the key file must be readable by
+1. **SSH private key** (`UXMCP_SERVER_N_KEY_PATH`): the key file must be readable by
    the process running `server.py`. Passphrase-protected keys are supported if
    the key is loaded in `ssh-agent`.
-2. **Password** (`UXMCP_UXMCP_SERVER_N_PASSWORD`): sent securely over the encrypted SSH
+2. **Password** (`UXMCP_SERVER_N_PASSWORD`): sent securely over the encrypted SSH
    channel.
 3. **SSH agent** (automatic): if neither `KEY_PATH` nor `PASSWORD` is set,
    `paramiko` tries to contact a running `ssh-agent`.
@@ -1573,7 +1579,7 @@ When `use_sudo=true` is passed to a tool and the configured user is **not** `roo
 
 1. A PTY channel is opened (required for sudo's password prompt).
 2. The command is wrapped as `sudo -S sh -c '<command>'`.
-3. `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` (falling back to `UXMCP_UXMCP_SERVER_N_PASSWORD`) is written to
+3. `UXMCP_SERVER_N_SUDO_PASSWORD` (falling back to `UXMCP_SERVER_N_PASSWORD`) is written to
    the channel's stdin followed by a newline.
 
 If neither password is set, sudo will block waiting for input and the command

@@ -33,9 +33,15 @@ class ServerConfig:
     sudo_password: Optional[str]
     vmid: Optional[str]
     tags: Optional[str]
+
     @property
     def is_root(self) -> bool:
         return self.user == "root"
+
+    @property
+    def tag_list(self) -> list[str]:
+        """Tags split on ';' (trimmed, empty items dropped)."""
+        return [t.strip() for t in (self.tags or "").split(";") if t.strip()]
 
 
 @dataclass
@@ -80,8 +86,8 @@ def load_servers() -> dict[str, ServerConfig]:
             password=os.getenv(f"UXMCP_SERVER_{i}_PASSWORD") or None,
             key_path=os.getenv(f"UXMCP_SERVER_{i}_KEY_PATH") or None,
             sudo_password=os.getenv(f"UXMCP_SERVER_{i}_SUDO_PASSWORD") or None,
-            vmid=os.getenv(f"UXMCP_SERVER_{i}_VMID") or None,
-            tags=os.getenv(f"UXMCP_SERVER_{i}_TAGS") or None,
+            vmid=(os.getenv(f"UXMCP_SERVER_{i}_VMID") or "").strip() or None,
+            tags=(os.getenv(f"UXMCP_SERVER_{i}_TAGS") or "").strip() or None,
         )
         i += 1
     return servers
@@ -1299,8 +1305,10 @@ def broadcast_command(
 # Server registry (public)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def list_servers() -> list[dict]:
-    """Returns the list of configured servers without credentials."""
+def list_servers(tag: Optional[str] = None) -> list[dict]:
+    """Returns the list of configured servers without credentials.
+    If `tag` is given, only servers having that tag (case-insensitive) are returned."""
+    wanted = tag.strip().lower() if tag else None
     return [
         {
             "id": cfg.id,
@@ -1310,6 +1318,9 @@ def list_servers() -> list[dict]:
             "user": cfg.user,
             "auth": "key" if cfg.key_path else "password",
             "is_root": cfg.is_root,
+            "vmid": cfg.vmid,
+            "tags": cfg.tag_list,
         }
         for cfg in SERVERS.values()
+        if not wanted or wanted in (t.lower() for t in cfg.tag_list)
     ]

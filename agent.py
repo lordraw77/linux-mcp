@@ -265,8 +265,8 @@ _SID = {"type": "string", "description": "Server ID from list_servers."}
 TOOLS: list[dict] = [
     # ── Core ──────────────────────────────────────────────────────────────────
     _tool("list_servers",
-          "List all configured SSH servers (id, label, host, port, user, auth).",
-          {}, []),
+          "List all configured SSH servers (id, label, host, port, user, auth, vmid, tags). Optional tag filter.",
+          {"tag": {"type": "string", "description": "Only servers having this tag."}}, []),
     _tool("execute_command",
           "Run a shell command on a remote server. use_sudo=true for sudo. Returns stdout/stderr/exit_code.",
           {"server_id": _SID,
@@ -620,7 +620,7 @@ def _run_tool(name: str, args: dict) -> str:  # noqa: PLR0911,PLR0912
     try:
         # ── Core ──────────────────────────────────────────────────────────────
         if name == "list_servers":
-            result = ssh.list_servers()
+            result = ssh.list_servers(a.get("tag"))
         elif name == "execute_command":
             result = ssh.execute_command(
                 a["server_id"], a["command"],
