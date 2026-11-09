@@ -175,6 +175,25 @@ UXMCP_SERVER_3_PORT=2222
 UXMCP_SERVER_3_USER=admin
 UXMCP_SERVER_3_PASSWORD=mypassword
 UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
+
+# ── Server 4: root via SSH key + tags ─────────────────────────────────────────
+UXMCP_SERVER_4_LABEL=web-server-2
+UXMCP_SERVER_4_HOST=192.168.1.30
+UXMCP_SERVER_4_PORT=22
+UXMCP_SERVER_4_USER=root
+UXMCP_SERVER_4_KEY_PATH=/root/.ssh/id_ed25519
+UXMCP_SERVER_4_TAGS=web;production
+
+# ── Server 5: password auth + tags + vmid ───────────────────────────────
+UXMCP_SERVER_5_LABEL=vm-server
+UXMCP_SERVER_5_HOST=10.0.0.5 
+UXMCP_SERVER_5_PORT=2222
+UXMCP_SERVER_5_USER=admin
+UXMCP_SERVER_5_PASSWORD=mypassword
+UXMCP_SERVER_5_SUDO_PASSWORD=mypassword
+UXMCP_SERVER_5_VMID=103
+UXMCP_SERVER_5_TAGS=community-script;postgres 
+
 ```
 
 **Variable reference:**
@@ -188,6 +207,8 @@ UXMCP_SERVER_3_SUDO_PASSWORD=mypassword
 | `UXMCP_UXMCP_SERVER_N_PASSWORD` | ✅* | — | SSH password (*required if no KEY_PATH) |
 | `UXMCP_UXMCP_SERVER_N_KEY_PATH` | ✅* | — | Absolute path to SSH private key |
 | `UXMCP_UXMCP_SERVER_N_SUDO_PASSWORD` | — | same as PASSWORD | Password used for `sudo -S` |
+| `UXMCP_SERVER_N_TAGS` | — | — | Semicolon-separated tags for filtering servers |
+| `UXMCP_SERVER_N_VMID` | — | — | Optional virtual machine ID for the server |
 
 > If both `KEY_PATH` and `PASSWORD` are set, the key takes precedence.
 > If the user is `root`, `use_sudo` is silently ignored.
